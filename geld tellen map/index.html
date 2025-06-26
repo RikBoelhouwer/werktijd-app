@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Hoeveel moet ik ervoor werken?</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <button id="settings-btn">⚙ Salaris</button>
+  <button id="theme-toggle">🌓 Thema</button>
+
+  <h1>Hoeveel moet ik ervoor werken?</h1>
+
+  <input type="number" id="priceInput" placeholder="Prijs (€)" />
+  <div id="result">Voer een prijs in...</div>
+
+  <div class="button-row">
+    <button class="yes" onclick="handleDecision(true)">✅ Kopen</button>
+    <button class="no" onclick="handleDecision(false)">❌ Niet kopen</button>
+    <button class="undo" onclick="undoLast()">↩️ Undo</button>
+  </div>
+
+  <div class="totals">
+    <div>🕓 Uitgegeven tijd totaal: <span id="totalSpentTime">0u 0m 0s</span></div>
+    <div>⏳ Bespaarde tijd totaal: <span id="totalSavedTime">0u 0m 0s</span></div>
+  </div>
+
+  <div class="list-container">
+    <div class="list-box">
+      <h3>🟢 Tijd uitgegeven</h3>
+      <ul id="spentList"></ul>
+    </div>
+    <div class="list-box">
+      <h3>🔴 Tijd bespaard</h3>
+      <ul id="savedList"></ul>
+    </div>
+  </div>
+
+  <div class="modal" id="salaryModal">
+    <div class="modal-content">
+      <h2>Voer je uurloon in (€)</h2>
+      <input type="number" id="salaryInput" />
+      <br>
+      <button onclick="saveSalary()">Opslaan</button>
+    </div>
+  </div>
+
+  <div class="modal" id="themeModal">
+    <div class="modal-content">
+      <h2>Kies een accentkleur:</h2>
+      <input type="color" id="colorPicker" value="#4caf50"/>
+      <br>
+      <button onclick="saveTheme()">Opslaan</button>
+    </div>
+  </div>
+
+  <script>
+    const priceInput = document.getElementById("priceInput");
+    const result = document.getElementById("result");
+    const spentList = document.getElementById("spentList");
+    const savedList = document.getElementById("savedList");
+    const totalSpentTime = document.getElementById("totalSpentTime");
+    const totalSavedTime = document.getElementById("totalSavedTime");
+
+    let salary = parseFloat(localStorage.getItem("salary")) || null;
+    let spentItems = JSON.parse(localStorage.getItem("spentItems")) || [];
+    let savedItems = JSON.parse(localStorage.getItem("savedItems")) || [];
+    let lastAction = null;
+
+    const salaryModal = document.getElementById("salaryModal");
+    const salaryInput = document.getElementById("salaryInput");
+    const themeModal = document.getElementById("themeModal");
+    const colorPicker = document.getElementById("colorPicker");
+
+    document.getElementById("settings-btn").onclick = () => {
+      salaryInput.value = salary || "";
+      salaryModal.style.display = "flex";
+    };
+
+    document.getElementById("theme-toggle").onclick = () => {
+      themeModal.style.display = "flex";
+    };
+
+    window.onclick = (e) => {
+      if (e.target === salaryModal) salaryModal.style.display = "none";
+      if (e.target === themeModal) themeModal.style.display = "none";
+    };
+
+    function saveSalary() {
+      const val = parseFloat(salaryInput.value);
+      if (!isNaN(val) && val > 0) {
+        salary = val;
+        localStorage.setItem("salary", salary);
+        salaryModal.style.display = "none";
+        calculate();
+      } else alert("Voer een geldig uurloon in.");
+    }
+
+    function saveTheme() {
+      const color = colorPicker.value;
+      document.documentElement.style.setProperty('--accent-color', color);
+      localStorage.setItem("accentColor", color);
+      themeModal.style.display = "none";
+    }
+
+    function applySavedTheme() {
+      const color = localStorage.getItem("accentColor");
+      if (color) document.documentElement.style.setProperty('--accent-color', color);
+    }
+
+    function priceToTime(price) {
+      const seconds = (price / salary) * 3600;
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return { h, m, s, totalSeconds: seconds };
+    }
+
+    priceInput.addEventListener("input", calculate);
+
+    function calculate() {
+      const price = parseFloat(priceInput.value);
+      if (!salary) return result.textContent = "⚠️ Stel eerst je uurloon in.";
+      if (isNaN(price) || price <= 0) return result.textContent = "Voer een geldige prijs in...";
+      const { h, m, s } = priceToTime(price);
+      result.textContent = `Je moet ${h}u ${m}m ${s}s werken voor €${price.toFixed(2)}`;
+    }
+
+    function handleDecision(buy) {
+      const price = parseFloat(priceInput.value);
+      if (!salary || isNaN(price) || price <= 0) return;
+
+      const { h, m, s, totalSeconds } = priceToTime(price);
+      const entry = { text: `€${price.toFixed(2)} → ${h}u ${m}m ${s}s`, seconds: totalSeconds };
+
+      if (buy) {
+        spentItems.push(entry);
+        localStorage.setItem("spentItems", JSON.stringify(spentItems));
+        lastAction = { list: "spent", entry };
+      } else {
+        savedItems.push(entry);
+        localStorage.setItem("savedItems", JSON.stringify(savedItems));
+        lastAction = { list: "saved", entry };
+      }
+
+      updateLists();
+      priceInput.value = '';
+      result.textContent = "Voer een prijs in...";
+    }
+
+    function undoLast() {
+      if (!lastAction) return;
+      const list = lastAction.list === "spent" ? spentItems : savedItems;
+      list.pop();
+      localStorage.setItem(lastAction.list + "Items", JSON.stringify(list));
+      lastAction = null;
+      updateLists();
+    }
+
+    function deleteItem(index, listName) {
+      const list = listName === "spent" ? spentItems : savedItems;
+      list.splice(index, 1);
+      localStorage.setItem(listName + "Items", JSON.stringify(list));
+      updateLists();
+    }
+
+    function updateLists() {
+      spentList.innerHTML = spentItems.map((item, i) =>
+        `<li class="fade-in">${item.text} <button onclick="deleteItem(${i}, 'spent')">🗑</button></li>`).join('');
+      savedList.innerHTML = savedItems.map((item, i) =>
+        `<li class="fade-in">${item.text} <button onclick="deleteItem(${i}, 'saved')">🗑</button></li>`).join('');
+
+      const spentSec = spentItems.reduce((sum, item) => sum + item.seconds, 0);
+      const savedSec = savedItems.reduce((sum, item) => sum + item.seconds, 0);
+
+      totalSpentTime.textContent = formatTime(spentSec);
+      totalSavedTime.textContent = formatTime(savedSec);
+    }
+
+    function formatTime(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${h}u ${m}m ${s}s`;
+    }
+
+    window.onload = () => {
+      applySavedTheme();
+      updateLists();
+      if (salary) calculate();
+    };
+
+    window.deleteItem = deleteItem;
+  </script>
+</body>
+</html>
